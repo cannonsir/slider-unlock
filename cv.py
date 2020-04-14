@@ -16,6 +16,65 @@ from selenium import webdriver
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
 
+def globalMatch(template, target):
+    """
+    全局模版匹配
+    :param template: 模版图片路径
+    :param target: 缺口图片路径
+    :return: 位置 x, y
+    """
+
+    # 读取图片
+    template = cv.imread(template, 0)
+    target = cv.imread(target, 0)
+
+    # 获取缺口图片宽高
+    w, h = target.shape[::-1]
+
+    # 指定副本文件存储位置
+    temp = 'logs/temp.jpg'
+    targ = 'logs/targ.jpg'
+
+    # 复制图片为副本
+    cv.imwrite(temp, template)
+    cv.imwrite(targ, target)
+
+    # 读取图片为MAT
+    target = cv.imread(targ)
+    # 转换颜色为灰色
+    target = cv.cvtColor(target, cv.COLOR_BGR2GRAY)
+    # 递归numpy数组中的每一项，对每一项进行减255的运算，然后求绝对值
+    target = abs(255 - target)
+
+    # 保存以上处理步骤的结果为图片文件
+    cv.imwrite(targ, target)
+
+    # 二次读取
+    target = cv.imread(targ)
+    template = cv.imread(temp)
+
+    # 调用openCV模版匹配获取匹配结果
+    result = cv.matchTemplate(target, template, cv.TM_CCOEFF_NORMED)
+    # 获取坐标信息
+    x, y = np.unravel_index(result.argmax(), result.shape)
+
+    # 展示圈出来的区域
+    cv.rectangle(template, (y, x), (y + w, x + h), (7, 249, 151), 2)
+    cv.imwrite("logs/yuantu.jpg", template)
+
+    # 弹窗展示
+    show(template)
+
+    # 返回坐标信息
+    return x, y
+
+
+def show(name):
+    cv.imshow('Show', name)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+
+
 def urllib_download(imgurl, imgsavepath):
     """
     下载图片
@@ -25,6 +84,7 @@ def urllib_download(imgurl, imgsavepath):
     """
     from urllib.request import urlretrieve
     urlretrieve(imgurl, imgsavepath)
+
 
 # 获取方块初始bbox
 def get_init_bbox(all, sub):
@@ -59,7 +119,7 @@ def get_init_bbox(all, sub):
     x, y = np.unravel_index(res.argmax(), res.shape)
 
     cv.rectangle(all, (y, x), (y + w, x + h), (7, 249, 151), 2)
-    cv.imwrite("yuantu.jpg", all)
+    cv.imwrite("logs/yuantu.jpg", all)
     cv.imshow('aaa', all)
     print(res)
 
@@ -124,10 +184,14 @@ def get_init_bbox(all, sub):
 
 # cv 操作
 
-cv_all = cv.imread('./all.png')
-cv_block = cv.imread('./block.png')
-cv_sub = cv.imread('./sub.png')
+# TODO 1. 剪切intersection左边一半内容来查找target，找到初始时的target的bbox值
+# TODO 2. 取bbox的上下x坐标及最右侧y坐标，剪切intersection为一个包含最终目标点的横条
+# TODO 3. 通过模版匹配在横条中搜索target轮廓，确定目标bbox，返回目标bbox的左侧y值
 
-init_bbox = get_init_bbox(cv_all, cv_sub)
+intersection = cv.imread('./img/intersection.png')
+template = cv.imread('./img/template.png')
+target = cv.imread('./img/target.png')
 
-cv.waitKey(0)
+# get_init_bbox(template, target)
+position = globalMatch('./img/template.png', './img/target.png')
+print(position)
