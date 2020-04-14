@@ -28,6 +28,8 @@ def globalMatch(template, target):
     template = cv.imread(template, 0)
     target = cv.imread(target, 0)
 
+    print(target.dtype)
+
     # 获取缺口图片宽高
     w, h = target.shape[::-1]
 
@@ -43,7 +45,7 @@ def globalMatch(template, target):
     target = cv.imread(targ)
     # 转换颜色为灰色
     target = cv.cvtColor(target, cv.COLOR_BGR2GRAY)
-    # 递归numpy数组中的每一项，对每一项进行减255的运算，然后求绝对值
+    # 递归numpy数组中的每一项，对每一项进行减255的运算，然后求绝对值(取对比色?)
     target = abs(255 - target)
 
     # 保存以上处理步骤的结果为图片文件
@@ -55,6 +57,11 @@ def globalMatch(template, target):
 
     # 调用openCV模版匹配获取匹配结果
     result = cv.matchTemplate(target, template, cv.TM_CCOEFF_NORMED)
+
+    print(result.argmax())
+
+    print(323)
+
     # 获取坐标信息
     x, y = np.unravel_index(result.argmax(), result.shape)
 
@@ -87,14 +94,25 @@ def urllib_download(imgurl, imgsavepath):
 
 
 # 获取方块初始bbox
-def get_init_bbox(all, sub):
+def get_init_bbox(intersection, target):
+    intersection = cv.cvtColor(intersection, cv.COLOR_BGR2GRAY)
+    target = cv.cvtColor(target, cv.COLOR_BGR2GRAY)
 
-    h, w, s = all.shape
+    cv.imshow('intersection', intersection)
+    cv.imshow('target', target)
+
+    cv.waitKey(0)
+
+    h, w = intersection.shape
+
+    print(intersection.shape)
 
     # 使用numpy数组切片对图像进行剪裁
-    cropped = cv.cvtColor(all[:, :math.ceil(w / 3)], cv.COLOR_BGR2GRAY)
+    cropped = cv.cvtColor(intersection[:, :math.ceil(w / 2)])
 
-    sub = cv.cvtColor(sub, cv.COLOR_BGR2GRAY)
+    target = cv.cvtColor(target, cv.COLOR_BGR2GRAY)
+
+    return
 
     # cv.imshow('cropped', cropped)
     # cv.imshow('sub', sub)
@@ -131,6 +149,7 @@ def get_init_bbox(all, sub):
     cv.waitKey(0)
 
     return 233
+
 
 # # selenium选项
 # options = webdriver.ChromeOptions()
@@ -184,14 +203,40 @@ def get_init_bbox(all, sub):
 
 # cv 操作
 
+# TODO 以下为方案A，如果不行，就用globalMatch
 # TODO 1. 剪切intersection左边一半内容来查找target，找到初始时的target的bbox值
 # TODO 2. 取bbox的上下x坐标及最右侧y坐标，剪切intersection为一个包含最终目标点的横条
 # TODO 3. 通过模版匹配在横条中搜索target轮廓，确定目标bbox，返回目标bbox的左侧y值
 
-intersection = cv.imread('./img/intersection.png')
-template = cv.imread('./img/template.png')
-target = cv.imread('./img/target.png')
+intersection = cv.imread('img/intersection.png')
+template = cv.imread('img/template.png')
+target = cv.imread('img/target.png')
 
-# get_init_bbox(template, target)
-position = globalMatch('./img/template.png', './img/target.png')
-print(position)
+# get_init_bbox(intersection, target)
+# position = globalMatch('./img/template.png', './img/target.png')
+# print(position)
+
+im = cv.imread('img/target.png')
+
+pointColor = im[0, 0]
+
+for row in range(im):
+    for col in range(row):
+        if pointColor == im[row, col]:
+            im.itemset((row, col))
+
+
+imgray = cv.cvtColor(im, cv.COLOR_BGR2GRAY)
+
+ret, thresh = cv.threshold(imgray, 127, 255, 0)
+contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+
+res = cv.drawContours(im, contours, 0, (0, 255, 0), 3)
+
+# leftmost = tuple(contours[contours[:, :, 0].argmin()][0])
+# rightmost = tuple(contours[contours[:, :, 0].argmax()][0])
+# topmost = tuple(contours[contours[:, :, 1].argmin()][0])
+# bottommost = tuple(contours[contours[:, :, 1].argmax()][0])
+
+cv.imshow('res', res)
+cv.waitKey(0)
