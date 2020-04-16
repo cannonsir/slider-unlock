@@ -16,7 +16,42 @@ from selenium import webdriver
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
 
-def globalMatch(template, target):
+def external_rect_cut(image):
+    """
+    按照最边缘轮廓剪切出主体部分(矩形)
+    :param image: 图片Mat
+    :return:
+    """
+    temp_img = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+
+    #
+    ret, thresh = cv.threshold(temp_img, 127, 255, 0)
+
+    # 寻找轮廓,注意这里第二个参数表示只查询最外层的轮廓
+    contours, hierarchy = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+    # 获取第一个轮廓
+    cnt = contours[0]
+
+    # 极点是指对象的最顶部，最底部，最右侧和最左侧的点
+    (l_x, l_y) = tuple(cnt[cnt[:, :, 0].argmin()][0])
+    (r_x, r_y) = tuple(cnt[cnt[:, :, 0].argmax()][0])
+    (t_x, t_y) = tuple(cnt[cnt[:, :, 1].argmin()][0])
+    (b_x, b_y) = tuple(cnt[cnt[:, :, 1].argmax()][0])
+
+    # 绘制极点,展示极点绘制结果
+    # test_show = target
+    # cv.circle(test_show, (l_x, l_y), 1, (255, 0, 0), 3)
+    # cv.circle(test_show, (r_x, r_y), 1, (0, 255, 0), 3)
+    # cv.circle(test_show, (t_x, t_y), 1, (0, 0, 255), 3)
+    # cv.circle(test_show, (b_x, b_y), 1, (255, 255, 0), 3)
+    # cv.imshow('points', test_show)
+
+    # 裁切并返回裁切结果
+    return image[l_x:r_x, t_y:b_y]
+
+
+def global_match(template, target):
     """
     全局模版匹配
     :param template: 模版图片路径
@@ -93,117 +128,63 @@ def urllib_download(imgurl, imgsavepath):
     urlretrieve(imgurl, imgsavepath)
 
 
-# 获取方块初始bbox
-def get_init_bbox(intersection, target):
-    intersection = cv.cvtColor(intersection, cv.COLOR_BGR2GRAY)
-    target = cv.cvtColor(target, cv.COLOR_BGR2GRAY)
+# selenium选项
+options = webdriver.ChromeOptions()
 
-    cv.imshow('intersection', intersection)
-    cv.imshow('target', target)
+# 此步骤很重要，设置为开发者模式，防止被各大网站识别出来使用了Selenium
+options.add_experimental_option('excludeSwitches', ['enable-automation'])
 
-    cv.waitKey(0)
+# 创建会话
+session = webdriver.Remote(command_executor='http://127.0.0.1:4444/wd/hub', options=options)
 
-    h, w = intersection.shape
+# 窗口最大话
+session.maximize_window()
 
-    print(intersection.shape)
+session.get('https://ibaotu.com/')
 
-    # 使用numpy数组切片对图像进行剪裁
-    cropped = cv.cvtColor(intersection[:, :math.ceil(w / 2)])
+# QQ登录
+ActionChains(session) \
+    .click(session.find_element_by_xpath("(//a[contains(text(),'请登录')])[2]")) \
+    .click(session.find_element_by_xpath("//a[2]/p/i")) \
+    .perform()
 
-    target = cv.cvtColor(target, cv.COLOR_BGR2GRAY)
+# 切换到登录交互框的上下文中
+session.switch_to.frame("ptlogin_iframe")
 
-    return
+ActionChains(session) \
+    .click(session.find_element_by_id("switcher_plogin")) \
+    .send_keys_to_element(session.find_element_by_id("u"), "1234567888") \
+    .send_keys_to_element(session.find_element_by_id("p"), "xxx") \
+    .click(session.find_element_by_xpath("//div[@class='submit']/a")) \
+    .perform()
 
-    # cv.imshow('cropped', cropped)
-    # cv.imshow('sub', sub)
-    # cv.threshold(sub, sub, 254,255, cv.CV_THRESH_BINARY)
+# 等待验证码iframe
+WebDriverWait(session, 10).until(lambda x: x.find_element_by_id("newVcodeArea"))
 
-    # TODO 关于验证码的拖动块的留白区域删除，可以通过极端点算出bbox再画矩形
+time.sleep(1)
 
-    # TODO 模版与目录大小不一致
+# 切换到验证码 TODO 有时候没有验证码的情况不需要以下步骤了
+session.switch_to.frame("tcaptcha_iframe")
 
-    # 不知名群友回答
-    # pyrDown*2
-    # cvtColor
-    # medianBlur
-    # GaussianBlur
-    # threshold
-    # 一套下来
-    # 再来边缘检测+获取凸包应该就可以了
-    #
+time.sleep(2)
 
-    res = cv.matchTemplate(cv.cvtColor(all, cv.COLOR_BGR2GRAY), sub, cv.TM_CCOEFF)
+# 等待验证码图片,并截图保存
+WebDriverWait(session, 10).until(lambda x: x.find_element_by_id("slideBg")).screenshot('./img/intersection.png')
 
-    x, y = np.unravel_index(res.argmax(), res.shape)
+block = session.find_element_by_xpath('//img[@id="slideBg"]').get_attribute('src')  # 大图 url
+sub = session.find_element_by_xpath('//img[@id="slideBlock"]').get_attribute('src')  # 小滑块 图片url
 
-    cv.rectangle(all, (y, x), (y + w, x + h), (7, 249, 151), 2)
-    cv.imwrite("logs/yuantu.jpg", all)
-    cv.imshow('aaa', all)
-    print(res)
+# 保存图片至本地
+urllib_download(block, './img/template.png')
+urllib_download(sub, './img/target.png')
 
-    min_val, max_val, min_loc, max_loc = cv.minMaxLoc(res)
+time.sleep(5)
 
-    left_top = max_loc  # 左上角
-    right_bottom = (left_top[0] + w, left_top[1] + h)  # 右下角
-    cv.rectangle(cropped, left_top, right_bottom, 255, 2)  # 画出矩形位置
-    cv.waitKey(0)
-
-    return 233
-
-
-# # selenium选项
-# options = webdriver.ChromeOptions()
-#
-# # 此步骤很重要，设置为开发者模式，防止被各大网站识别出来使用了Selenium
-# options.add_experimental_option('excludeSwitches', ['enable-automation'])
-#
-# # 创建会话
-# session = webdriver.Remote(command_executor='http://127.0.0.1:4444/wd/hub', options=options)
-#
-# # 窗口最大话
-# session.maximize_window()
-#
-# session.get('https://ibaotu.com/')
-#
-# # QQ登录
-# ActionChains(session) \
-#     .click(session.find_element_by_xpath("(//a[contains(text(),'请登录')])[2]")) \
-#     .click(session.find_element_by_xpath("//a[2]/p/i")) \
-#     .perform()
-#
-# # 切换到登录交互框的上下文中
-# session.switch_to.frame("ptlogin_iframe")
-#
-# ActionChains(session) \
-#     .click(session.find_element_by_id("switcher_plogin")) \
-#     .send_keys_to_element(session.find_element_by_id("u"), "1234567888") \
-#     .send_keys_to_element(session.find_element_by_id("p"), "xxx") \
-#     .click(session.find_element_by_xpath("//div[@class='submit']/a")) \
-#     .perform()
-#
-# # 等待验证码iframe
-# WebDriverWait(session, 10).until(lambda x: x.find_element_by_id("newVcodeArea"))
-#
-# # 切换到验证码
-# session.switch_to.frame("tcaptcha_iframe")
-#
-# time.sleep(2)
-#
-# # 等待验证码图片
-# WebDriverWait(session, 10).until(lambda x: x.find_element_by_id("slideBg")).screenshot('./all.png')
-#
-# block = session.find_element_by_xpath('//img[@id="slideBg"]').get_attribute('src')  # 大图 url
-# sub = session.find_element_by_xpath('//img[@id="slideBlock"]').get_attribute('src')  # 小滑块 图片url
-#
-# # 保存图片至本地
-# urllib_download(block, './block.png')
-# urllib_download(sub, './sub.png')
-
-# session.quit()
+session.quit()
 
 # cv 操作
 
-# TODO 以下为方案A，如果不行，就用globalMatch
+# TODO 以下为方案A，如果不行，就用global_match
 # TODO 1. 剪切intersection左边一半内容来查找target，找到初始时的target的bbox值
 # TODO 2. 取bbox的上下x坐标及最右侧y坐标，剪切intersection为一个包含最终目标点的横条
 # TODO 3. 通过模版匹配在横条中搜索target轮廓，确定目标bbox，返回目标bbox的左侧y值
@@ -216,27 +197,6 @@ target = cv.imread('img/target.png')
 # position = globalMatch('./img/template.png', './img/target.png')
 # print(position)
 
-im = cv.imread('img/target.png')
-
-pointColor = im[0, 0]
-
-for row in range(im):
-    for col in range(row):
-        if pointColor == im[row, col]:
-            im.itemset((row, col))
-
-
-imgray = cv.cvtColor(im, cv.COLOR_BGR2GRAY)
-
-ret, thresh = cv.threshold(imgray, 127, 255, 0)
-contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
-
-res = cv.drawContours(im, contours, 0, (0, 255, 0), 3)
-
-# leftmost = tuple(contours[contours[:, :, 0].argmin()][0])
-# rightmost = tuple(contours[contours[:, :, 0].argmax()][0])
-# topmost = tuple(contours[contours[:, :, 1].argmin()][0])
-# bottommost = tuple(contours[contours[:, :, 1].argmax()][0])
-
-cv.imshow('res', res)
+cut = external_rect_cut(target)
+cv.imshow('', cut)
 cv.waitKey(0)
