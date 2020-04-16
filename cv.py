@@ -22,16 +22,26 @@ def external_rect_cut(image):
     :param image: 图片Mat
     :return:
     """
+
+    # 颜色转换为灰度图像
     temp_img = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
 
-    #
-    ret, thresh = cv.threshold(temp_img, 127, 255, 0)
+    # 阀值
+    ret, thresh = cv.threshold(temp_img, 96, 255, cv.THRESH_BINARY)
 
     # 寻找轮廓,注意这里第二个参数表示只查询最外层的轮廓
-    contours, hierarchy = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+    contours, hierarchy = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
 
     # 获取第一个轮廓
     cnt = contours[0]
+
+    # dd = ROI_byMouse(image, contours[0])
+    #
+    # print(333)
+    # print(dd)
+
+    # 展示轮廓效果
+    show(cv.drawContours(image, cnt, -1, (0, 255, 0), 3))
 
     # 极点是指对象的最顶部，最底部，最右侧和最左侧的点
     (l_x, l_y) = tuple(cnt[cnt[:, :, 0].argmin()][0])
@@ -40,15 +50,43 @@ def external_rect_cut(image):
     (b_x, b_y) = tuple(cnt[cnt[:, :, 1].argmax()][0])
 
     # 绘制极点,展示极点绘制结果
-    # test_show = target
-    # cv.circle(test_show, (l_x, l_y), 1, (255, 0, 0), 3)
-    # cv.circle(test_show, (r_x, r_y), 1, (0, 255, 0), 3)
-    # cv.circle(test_show, (t_x, t_y), 1, (0, 0, 255), 3)
-    # cv.circle(test_show, (b_x, b_y), 1, (255, 255, 0), 3)
-    # cv.imshow('points', test_show)
+    # cv.circle(image, (l_x, l_y), 1, (255, 0, 0), 3)
+    # cv.circle(image, (r_x, r_y), 1, (0, 255, 0), 3)
+    # cv.circle(image, (t_x, t_y), 1, (0, 0, 255), 3)
+    # cv.circle(image, (b_x, b_y), 1, (255, 255, 0), 3)
+    # show(image)
 
-    # 裁切并返回裁切结果
-    return image[l_x:r_x, t_y:b_y]
+    # 裁切
+    temp_img = image[l_x:r_x, t_y:b_y]
+
+    # 写入日志
+    cv.imwrite("logs/cut.jpg", temp_img)
+
+    # 返回裁剪结果
+    return temp_img
+
+
+# opencv不规则裁剪
+def ROI_byMouse(img, pts):
+    mask = np.zeros(img.shape, np.uint8)
+    # pts = np.array(lsPointsChoose, np.int32)  # pts是多边形的顶点列表（顶点集）
+    col0 = pts[:, 0]
+    col1 = pts[:, 1]
+    x1 = np.min(col0)
+    y1 = np.min(col1)
+    x2 = np.max(col0)
+    y2 = np.max(col1)
+    pts = pts.reshape((-1, 1, 2))
+    # 这里 reshape 的第一个参数为-1, 表明这一维的长度是根据后面的维度的计算出来的。
+    # OpenCV中需要先将多边形的顶点坐标变成顶点数×1×2维的矩阵，再来绘制
+
+    # --------------画多边形---------------------
+    mask = cv.polylines(mask, [pts], True, (255, 255, 255))
+    ##-------------填充多边形---------------------
+    mask2 = cv.fillPoly(mask, [pts], (255, 255, 255))
+    ROI = cv.bitwise_and(mask2, img)
+
+    return ROI[y1:y2, x1:x2]
 
 
 def global_match(template, target):
@@ -128,59 +166,59 @@ def urllib_download(imgurl, imgsavepath):
     urlretrieve(imgurl, imgsavepath)
 
 
-# selenium选项
-options = webdriver.ChromeOptions()
-
-# 此步骤很重要，设置为开发者模式，防止被各大网站识别出来使用了Selenium
-options.add_experimental_option('excludeSwitches', ['enable-automation'])
-
-# 创建会话
-session = webdriver.Remote(command_executor='http://127.0.0.1:4444/wd/hub', options=options)
-
-# 窗口最大话
-session.maximize_window()
-
-session.get('https://ibaotu.com/')
-
-# QQ登录
-ActionChains(session) \
-    .click(session.find_element_by_xpath("(//a[contains(text(),'请登录')])[2]")) \
-    .click(session.find_element_by_xpath("//a[2]/p/i")) \
-    .perform()
-
-# 切换到登录交互框的上下文中
-session.switch_to.frame("ptlogin_iframe")
-
-ActionChains(session) \
-    .click(session.find_element_by_id("switcher_plogin")) \
-    .send_keys_to_element(session.find_element_by_id("u"), "1234567888") \
-    .send_keys_to_element(session.find_element_by_id("p"), "xxx") \
-    .click(session.find_element_by_xpath("//div[@class='submit']/a")) \
-    .perform()
-
-# 等待验证码iframe
-WebDriverWait(session, 10).until(lambda x: x.find_element_by_id("newVcodeArea"))
-
-time.sleep(1)
-
-# 切换到验证码 TODO 有时候没有验证码的情况不需要以下步骤了
-session.switch_to.frame("tcaptcha_iframe")
-
-time.sleep(2)
-
-# 等待验证码图片,并截图保存
-WebDriverWait(session, 10).until(lambda x: x.find_element_by_id("slideBg")).screenshot('./img/intersection.png')
-
-block = session.find_element_by_xpath('//img[@id="slideBg"]').get_attribute('src')  # 大图 url
-sub = session.find_element_by_xpath('//img[@id="slideBlock"]').get_attribute('src')  # 小滑块 图片url
-
-# 保存图片至本地
-urllib_download(block, './img/template.png')
-urllib_download(sub, './img/target.png')
-
-time.sleep(5)
-
-session.quit()
+# # selenium选项
+# options = webdriver.ChromeOptions()
+#
+# # 此步骤很重要，设置为开发者模式，防止被各大网站识别出来使用了Selenium
+# options.add_experimental_option('excludeSwitches', ['enable-automation'])
+#
+# # 创建会话
+# session = webdriver.Remote(command_executor='http://127.0.0.1:4444/wd/hub', options=options)
+#
+# # 窗口最大话
+# session.maximize_window()
+#
+# session.get('https://ibaotu.com/')
+#
+# # QQ登录
+# ActionChains(session) \
+#     .click(session.find_element_by_xpath("(//a[contains(text(),'请登录')])[2]")) \
+#     .click(session.find_element_by_xpath("//a[2]/p/i")) \
+#     .perform()
+#
+# # 切换到登录交互框的上下文中
+# session.switch_to.frame("ptlogin_iframe")
+#
+# ActionChains(session) \
+#     .click(session.find_element_by_id("switcher_plogin")) \
+#     .send_keys_to_element(session.find_element_by_id("u"), "1234567888") \
+#     .send_keys_to_element(session.find_element_by_id("p"), "xxx") \
+#     .click(session.find_element_by_xpath("//div[@class='submit']/a")) \
+#     .perform()
+#
+# # 等待验证码iframe
+# WebDriverWait(session, 10).until(lambda x: x.find_element_by_id("newVcodeArea"))
+#
+# time.sleep(1)
+#
+# # 切换到验证码 TODO 有时候没有验证码的情况不需要以下步骤了
+# session.switch_to.frame("tcaptcha_iframe")
+#
+# time.sleep(2)
+#
+# # 等待验证码图片,并截图保存
+# WebDriverWait(session, 10).until(lambda x: x.find_element_by_id("slideBg")).screenshot('./img/intersection.png')
+#
+# block = session.find_element_by_xpath('//img[@id="slideBg"]').get_attribute('src')  # 大图 url
+# sub = session.find_element_by_xpath('//img[@id="slideBlock"]').get_attribute('src')  # 小滑块 图片url
+#
+# # 保存图片至本地
+# urllib_download(block, './img/template.png')
+# urllib_download(sub, './img/target.png')
+#
+# time.sleep(5)
+#
+# session.quit()
 
 # cv 操作
 
