@@ -15,6 +15,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium import webdriver
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+
 
 def external_rect_cut(image):
     """
