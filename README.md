@@ -1,4 +1,4 @@
-## rip
+## Slider Captcha Hack
 
 > python实现的验证码破解项目，支持RPC调用，自动化浏览器操作，可视化远程VNC连接，自定义重试策略等操作...
 
