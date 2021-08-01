@@ -417,7 +417,7 @@ fetchTest()
 quit()
 
 # 读取图片
-# intersection = cv2.imread('img/intersection.png')
+intersection = cv2.imread('img/intersection.png')
 template = cv2.imread('test/res_1587387491_template.png')
 slider = cv2.imread('test/res_1587387491_slider.png')
 
